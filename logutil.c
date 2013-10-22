@@ -678,9 +678,7 @@ int main(int argc, char **argv)
 		}
         g_dev_count = 1;
 
-        int accessmode =
-                  (mode == O_RDONLY) ? R_OK : 0
-                | (mode == O_WRONLY) ? W_OK : 0;
+        int accessmode = (mode == O_RDONLY) ? R_OK : (mode == O_WRONLY) ? W_OK : 0;
 
 	// only add this if it's available
 	if (0 == access("/dev/"LOGGER_LOG_SYSTEM, accessmode)) {
