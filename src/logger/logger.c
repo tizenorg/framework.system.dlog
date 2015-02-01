@@ -48,6 +48,9 @@
 #define FILE_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH)
 #define MAX_ARGS 16
 #define MAX_ROTATED 4
+#define MAX_QUEUED 4096
+#define BUFFER_MAX 100
+#define INTERVAL_MAX 60*60
 
 #define CONFIG_FILE "/opt/etc/dlog_logger.conf"
 
@@ -113,6 +116,9 @@ static int device_list[] = {
 	[LOG_ID_MAX] = false,
 };
 
+static int buffer_size = 0;
+static int min_interval = 0;
+
 /*
  * get log device id from device path table by device name
  */
@@ -135,7 +141,7 @@ static int get_device_id_by_name(const char *name)
  */
 static int check_device(int id)
 {
-	if (id < 0 || LOG_ID_MAX < id)
+	if (id < 0 || LOG_ID_MAX <= id)
 		return 0;
 
 	return (device_list[id] == true) ? 0 : -1;
@@ -146,7 +152,7 @@ static int check_device(int id)
  */
 static int register_device(int id)
 {
-	if (id < 0 || LOG_ID_MAX < id)
+	if (id < 0 || LOG_ID_MAX <= id)
 		return -1;
 	device_list[id] = true;
 
@@ -234,7 +240,6 @@ static void process_buffer(struct log_device *dev, struct logger_entry *buf)
 	struct log_task_link *task;
 
 	err = log_process_log_buffer(buf, &entry);
-
 	if (err < 0)
 		goto exit;
 
@@ -256,6 +261,7 @@ static void process_buffer(struct log_device *dev, struct logger_entry *buf)
 			rotate_logs(logwork);
 		}
 	}
+
 exit:
 	return;
 }
@@ -325,12 +331,16 @@ static void print_next_entry(struct log_device *dev)
  */
 static void do_logger(struct log_device *dev)
 {
+	time_t commit_time = 0, current_time = 0;
 	struct log_device *pdev;
 	int ret, result;
 	fd_set readset;
 	bool sleep = false;
 	int queued_lines = 0;
 	int max = 0;
+
+	if (min_interval)
+		commit_time = current_time = time(NULL);
 
 	for (pdev = dev; pdev; pdev = pdev->next) {
 		if (pdev->fd > max)
@@ -390,6 +400,29 @@ static void do_logger(struct log_device *dev)
 
 				enqueue(pdev, entry);
 				++queued_lines;
+
+				if (MAX_QUEUED < queued_lines) {
+					_D("queued_lines = %d\n", queued_lines);
+					while (true) {
+						choose_first(dev, &pdev);
+						if (pdev == NULL)
+							break;
+						print_next_entry(pdev);
+						--queued_lines;
+					}
+					if (min_interval)
+						commit_time = time(NULL);
+					break;
+				}
+			}
+		}
+
+		if (min_interval) {
+			current_time = time(NULL);
+			if (current_time - commit_time < min_interval &&
+					queued_lines < buffer_size) {
+				sleep = true;
+				continue;
 			}
 		}
 
@@ -401,6 +434,8 @@ static void do_logger(struct log_device *dev)
 					break;
 				print_next_entry(pdev);
 				--queued_lines;
+				if (min_interval)
+					commit_time = current_time;
 			}
 		} else {
 			/* print all that aren't the last in their list */
@@ -411,6 +446,8 @@ static void do_logger(struct log_device *dev)
 					break;
 				print_next_entry(pdev);
 				--queued_lines;
+				if (min_interval)
+					commit_time = current_time;
 			}
 		}
 next:
@@ -428,7 +465,7 @@ static struct log_work *work_new(void)
 {
 	struct log_work *work;
 
-	work = malloc(sizeof(*work));
+	work = malloc(sizeof(struct log_work));
 	if (work == NULL) {
 		_E("failed to malloc log_work\n");
 		return NULL;
@@ -546,9 +583,9 @@ static struct log_device *device_new(int id)
 {
 	struct log_device *dev;
 
-	if (LOG_ID_MAX < id)
+	if (LOG_ID_MAX <= id)
 		return NULL;
-	dev = malloc(sizeof(*dev));
+	dev = malloc(sizeof(struct log_device));
 	if (dev == NULL) {
 		_E("failed to malloc log_device\n");
 		return NULL;
@@ -559,6 +596,7 @@ static struct log_device *device_new(int id)
 		_E("Unable to open log device '%s': %s\n",
 				device_path_table[id],
 				strerror(errno));
+		free(dev);
 		return NULL;
 	}
 	_D("device new id %d fd %d\n", dev->id, dev->fd);
@@ -712,7 +750,7 @@ static int parse_command_line(char *linebuffer, struct log_command *cmd)
 		case 'b':
 			id = get_device_id_by_name(optarg);
 			_D("command device name %s id %d\n", optarg, id);
-			if (id < 0 || LOG_ID_MAX < id)
+			if (id < 0 || LOG_ID_MAX <= id)
 				break;
 			cmd->option_buffer = true;
 			/* enable to log in device on/off struct */
@@ -774,7 +812,7 @@ static int parse_command_line(char *linebuffer, struct log_command *cmd)
 	/* If it have not the -b option,
 	   set the default devices to open and log */
 	if (cmd->option_buffer == false) {
-		_D("set default device\n", cmd->filename);
+		_D("set default device\n");
 		cmd->devices[LOG_ID_MAIN] = true;
 		cmd->devices[LOG_ID_SYSTEM] = true;
 		register_device(LOG_ID_MAIN);
@@ -848,9 +886,66 @@ static void sig_handler(int signo)
 	exit(EXIT_SUCCESS);
 }
 
+static int help(void) {
+
+	printf("%s [OPTIONS...] \n\n"
+			"Logger, records log messages to files.\n\n"
+			"  -h      Show this help\n"
+			"  -b N    Set number of logs to keep logs in memory buffer bafore write files (default:0, MAX:100)\n"
+			"  -t N    Set minimum interval time to write files (default:0, MAX:3600, seconds)\n",
+			program_invocation_short_name);
+
+	return 0;
+}
+
+static int parse_argv(int argc, char *argv[]) {
+	int ret = 1, option;
+
+	while ((option = getopt(argc, argv, "hb:t:")) != -1) {
+		switch (option) {
+			case 't':
+				if (!isdigit(optarg[0])) {
+					ret = -EINVAL;
+					printf("Wrong argument!\n");
+					help();
+					goto exit;
+				}
+				min_interval = atoi(optarg);
+				if (min_interval < 0 || INTERVAL_MAX < min_interval)
+					min_interval = 0;
+				ret = 1;
+				break;
+			case 'b':
+				if (!isdigit(optarg[0])) {
+					ret = -EINVAL;
+					printf("Wrong argument!\n");
+					help();
+					goto exit;
+				}
+				buffer_size = atoi(optarg);
+				if (buffer_size < 0 || BUFFER_MAX < buffer_size)
+					buffer_size = 0;
+				ret = 1;
+				break;
+			case 'h':
+				help();
+				ret = 0;
+				goto exit;
+			default:
+				ret = -EINVAL;
+		}
+	}
+exit:
+	optarg = NULL;
+	optind = 1;
+	optopt = 0;
+	return ret;
+}
+
+
 int main(int argc, char **argv)
 {
-	int i, ncmd;
+	int i, r, ncmd;
 	struct stat statbuf;
 	struct log_device *dev;
 	struct log_work *work;
@@ -858,7 +953,7 @@ int main(int argc, char **argv)
 	struct sigaction act;
 
 	/* set the signal handler for free dynamically allocated memory. */
-	memset(&act, 0, sizeof(act));
+	memset(&act, 0, sizeof(struct sigaction));
 	sigemptyset(&act.sa_mask);
 	act.sa_handler = (void *)sig_handler;
 	act.sa_flags = 0;
@@ -870,9 +965,13 @@ int main(int argc, char **argv)
 	if (sigaction(SIGTERM, &act, NULL) < 0)
 		_E("failed to sigaction for SIGTERM");
 
+	if (argc != 1) {
+		r = parse_argv(argc, argv);
+		if (r <= 0)
+			goto exit;
+	}
 	/* parse command from command configuration file. */
 	ncmd = parse_command(command_list);
-
 	/* If it have nothing command, exit. */
 	if (!ncmd)
 		goto exit;

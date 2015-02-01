@@ -10,8 +10,13 @@ Source102:  packaging/libdlog.manifest
 Source201:  packaging/dlog.conf.in
 Source202:  packaging/dlog_logger.conf.in
 Source203:  packaging/dlog_logger.conf-micro.in
+Source204:  packaging/dlog_logger.conf-micro-debug.in
 Source301:  packaging/dlog_logger.service
+BuildRequires: autoconf
+BuildRequires: automake
+BuildRequires: libtool
 BuildRequires: pkgconfig(libsystemd-journal)
+BuildRequires: pkgconfig(capi-base-common)
 Requires(post): coreutils
 
 %description
@@ -83,11 +88,9 @@ cp LICENSE.Apache-2.0 %{buildroot}/usr/share/license/dlogutil
 
 mkdir -p %{buildroot}/opt/etc
 cp %SOURCE201 %{buildroot}/opt/etc/dlog.conf
-%if "%{_repository}" == "wearable"
-cp %SOURCE203 %{buildroot}/opt/etc/dlog_logger.conf
-%else
+
+# default set log output to external files
 cp %SOURCE202 %{buildroot}/opt/etc/dlog_logger.conf
-%endif
 
 %preun -n dlogutil
 

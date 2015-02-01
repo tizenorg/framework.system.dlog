@@ -38,6 +38,7 @@ typedef enum {
     FORMAT_RAW,
     FORMAT_TIME,
     FORMAT_THREADTIME,
+    FORMAT_DUMP,
     FORMAT_LONG,
 } log_print_format;
 

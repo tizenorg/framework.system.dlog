@@ -72,7 +72,7 @@ static inline int dlog_pri_to_journal_pri(log_priority prio)
 	};
 
 	if (prio < 0 || prio >= DLOG_PRIO_MAX)
-		return -EINVAL;
+		return DLOG_ERROR_INVALID_PARAMETER;
 
 	return pri_table[prio];
 }
@@ -107,7 +107,7 @@ static int __write_to_log_sd_journal(log_id_t log_id, log_priority prio, const c
 #else
 static int __write_to_log_null(log_id_t log_id, log_priority prio, const char *tag, const char *msg)
 {
-	return -1;
+	return DLOG_ERROR_NOT_PERMITTED;
 }
 
 static int __write_to_log_kernel(log_id_t log_id, log_priority prio, const char *tag, const char *msg)
@@ -119,13 +119,16 @@ static int __write_to_log_kernel(log_id_t log_id, log_priority prio, const char 
 	if (log_id < LOG_ID_MAX)
 		log_fd = log_fds[log_id];
 	else
-		return -1; // for TC
+		return DLOG_ERROR_INVALID_PARAMETER;
+
+	if (prio < DLOG_VERBOSE || prio >= DLOG_PRIO_MAX)
+		return DLOG_ERROR_INVALID_PARAMETER;
 
 	if (!tag)
 		tag = "";
 
 	if (!msg)
-		return -1;
+		return DLOG_ERROR_INVALID_PARAMETER;
 
 	vec[0].iov_base	= (unsigned char *) &prio;
 	vec[0].iov_len	= 1;
@@ -135,6 +138,8 @@ static int __write_to_log_kernel(log_id_t log_id, log_priority prio, const char 
 	vec[2].iov_len	= strlen(msg) + 1;
 
 	ret = writev(log_fd, vec, 3);
+	if (ret < 0)
+	    ret = errno;
 
 	return ret;
 }
@@ -164,15 +169,16 @@ static void __dlog_init(void)
 #else
 	/* open device */
 	log_fds[LOG_ID_MAIN] = open("/dev/"LOG_MAIN, O_WRONLY);
-	log_fds[LOG_ID_RADIO] = open("/dev/"LOG_RADIO, O_WRONLY);
 	log_fds[LOG_ID_SYSTEM] = open("/dev/"LOG_SYSTEM, O_WRONLY);
+	log_fds[LOG_ID_RADIO] = open("/dev/"LOG_RADIO, O_WRONLY);
 	log_fds[LOG_ID_APPS] = open("/dev/"LOG_APPS, O_WRONLY);
-	if (log_fds[LOG_ID_MAIN] < 0 || log_fds[LOG_ID_RADIO] < 0) {
+	if (log_fds[LOG_ID_MAIN] < 0) {
 		write_to_log = __write_to_log_null;
 	} else {
 		write_to_log = __write_to_log_kernel;
 	}
-
+	if (log_fds[LOG_ID_RADIO] < 0)
+		log_fds[LOG_ID_RADIO] = log_fds[LOG_ID_MAIN];
 	if (log_fds[LOG_ID_SYSTEM] < 0)
 		log_fds[LOG_ID_SYSTEM] = log_fds[LOG_ID_MAIN];
 	if (log_fds[LOG_ID_APPS] < 0)
@@ -194,30 +200,30 @@ static int dlog_should_log(log_id_t log_id, const char* tag, int prio)
 
 #ifndef TIZEN_DEBUG_ENABLE
 	if (prio <= DLOG_DEBUG)
-		return 0;
+		return DLOG_ERROR_INVALID_PARAMETER;
 #endif
 	if (!tag)
-		return 0;
+		return DLOG_ERROR_INVALID_PARAMETER;
 
 	if (log_id < 0 || LOG_ID_MAX <= log_id)
-		return 0;
+		return DLOG_ERROR_INVALID_PARAMETER;
 
 	if (log_id != LOG_ID_APPS && !config.lc_plog)
-		return 0;
+		return DLOG_ERROR_NOT_PERMITTED;
 
 	if (config.lc_limiter) {
 		should_log = __log_limiter_pass_log(tag, prio);
 
 		if (!should_log) {
-			return 0;
+			return DLOG_ERROR_NOT_PERMITTED;
 		} else if (should_log < 0) {
 			write_to_log(log_id, prio, tag,
 			             "Your log has been blocked due to limit of log lines per minute.");
-			return 0;
+			return DLOG_ERROR_NOT_PERMITTED;
 		}
 	}
 
-	return 1;
+	return DLOG_ERROR_NONE;
 }
 
 int __dlog_vprint(log_id_t log_id, int prio, const char *tag, const char *fmt, va_list ap)
@@ -228,8 +234,10 @@ int __dlog_vprint(log_id_t log_id, int prio, const char *tag, const char *fmt, v
 	if (write_to_log == NULL)
 		__dlog_init();
 
-	if (!dlog_should_log(log_id, tag, prio))
-		return 0;
+	ret = dlog_should_log(log_id, tag, prio);
+
+	if (ret < 0)
+		return ret;
 
 	vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
 	ret = write_to_log(log_id, prio, tag, buf);
@@ -248,8 +256,10 @@ int __dlog_print(log_id_t log_id, int prio, const char *tag, const char *fmt, ..
 	if (write_to_log == NULL)
 		__dlog_init();
 
-	if (!dlog_should_log(log_id, tag, prio))
-		return 0;
+	ret = dlog_should_log(log_id, tag, prio);
+
+	if (ret < 0)
+		return ret;
 
 	va_start(ap, fmt);
 	vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -260,6 +270,33 @@ int __dlog_print(log_id_t log_id, int prio, const char *tag, const char *fmt, ..
 	__dlog_fatal_assert(prio);
 #endif
 	return ret;
+}
+
+int dlog_vprint(log_priority prio, const char *tag, const char *fmt, va_list ap)
+{
+	char buf[LOG_BUF_SIZE];
+
+	if (write_to_log == NULL)
+		__dlog_init();
+
+	vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
+
+	return write_to_log(LOG_ID_APPS, prio, tag, buf);
+}
+
+int dlog_print(log_priority prio, const char *tag, const char *fmt, ...)
+{
+	va_list ap;
+	char buf[LOG_BUF_SIZE];
+
+	if (write_to_log == NULL)
+		__dlog_init();
+
+	va_start(ap, fmt);
+	vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
+	va_end(ap);
+
+	return write_to_log(LOG_ID_APPS, prio, tag, buf);
 }
 
 void __attribute__((destructor)) __dlog_fini(void)

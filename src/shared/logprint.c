@@ -43,6 +43,8 @@ static FilterInfo * filterinfo_new(const char *tag, log_priority pri)
 {
 	FilterInfo *p_ret;
 	p_ret = (FilterInfo *)calloc(1, sizeof(FilterInfo));
+	if (!p_ret)
+		return NULL;
 	p_ret->mTag = strdup(tag);
 	p_ret->mPri = pri;
 
@@ -172,6 +174,8 @@ log_format *log_format_new()
 
 	p_ret = calloc(1, sizeof(log_format));
 
+	if (!p_ret)
+		return NULL;
 	p_ret->global_pri = DLOG_SILENT;
 	p_ret->format = FORMAT_BRIEF;
 
@@ -219,6 +223,8 @@ log_print_format log_format_from_string(const char * formatString)
 		format = FORMAT_TIME;
 	else if (strcmp(formatString, "threadtime") == 0)
 		format = FORMAT_THREADTIME;
+	else if (strcmp(formatString, "dump") == 0)
+		format = FORMAT_DUMP;
 	else if (strcmp(formatString, "long") == 0)
 		format = FORMAT_LONG;
 	else format = FORMAT_OFF;
@@ -339,33 +345,53 @@ static inline char * strip_end(char *str)
  * Returns 0 on success and -1 on invalid wire format (entry will be
  * in unspecified state)
  */
-int log_process_log_buffer(struct logger_entry *buf,log_entry *entry)
+int log_process_log_buffer(struct logger_entry *buf, log_entry *entry)
 {
-	size_t tag_len;
+	int i, start = -1, end = -1;
+
+	if (buf->len < 3) {
+		fprintf(stderr, "Entry too small\n");
+		return -1;
+	}
 
 	entry->tv_sec = buf->sec;
 	entry->tv_nsec = buf->nsec;
 	entry->pid = buf->pid;
 	entry->tid = buf->tid;
 
-	if (buf->msg[0] < 0 || buf->msg[0] > DLOG_SILENT) { /* char can be signed too */
-
-		/* There is no tag in this message - which is an error, but it might
-		 * happen when sombody redirects stdout/err to /dev/log_*.
-		 *
-		 * Pick ERROR priority as this shouldn't happen.
-		 */
-		entry->priority = DLOG_ERROR;
-		entry->tag = "[NO TAG]";
-		entry->messageLen = buf->len;
-		entry->message = buf->msg;
-	} else {
-		entry->priority = buf->msg[0];
-		entry->tag = buf->msg + 1;
-		tag_len = strlen(entry->tag);
-		entry->messageLen = buf->len - tag_len - 3;
-		entry->message = entry->tag + tag_len + 1;
+	entry->priority = buf->msg[0];
+	if (entry->priority < 0 || entry->priority > DLOG_SILENT) {
+		fprintf(stderr, "Wrong priority message\n");
+		return -1;
 	}
+
+	entry->tag = buf->msg + 1;
+	if (!strlen(entry->tag)) {
+		fprintf(stderr, "No tag message\n");
+		return -1;
+	}
+
+	for (i = 0; i < buf->len; i++) {
+		if (buf->msg[i] == '\0') {
+			if (start == -1) {
+				start = i + 1;
+			} else {
+				end = i;
+				break;
+			}
+		}
+	}
+	if (start == -1) {
+		fprintf(stderr, "Malformed log message\n");
+		return -1;
+	}
+	if (end == -1) {
+		end = buf->len - 1;
+		buf->msg[end] = '\0';
+	}
+
+	entry->message = buf->msg + start;
+	entry->messageLen = end - start;
 
 	return 0;
 }
@@ -388,7 +414,7 @@ char *log_format_log_line (
 	struct tm tmBuf;
 #endif
 	struct tm* ptm;
-	char timeBuf[32];
+	char timeBuf[32], tzBuf[16];
 	char prefixBuf[128], suffixBuf[128];
 	char priChar;
 	int prefixSuffixIsHeaderFooter = 0;
@@ -411,6 +437,7 @@ char *log_format_log_line (
 	ptm = localtime(&(entry->tv_sec));
 #endif
 	strftime(timeBuf, sizeof(timeBuf), "%m-%d %H:%M:%S", ptm);
+	strftime(tzBuf, sizeof(tzBuf), "%z", ptm);
 
 	/*
 	 * Construct a buffer containing the log header and log message.
@@ -443,15 +470,23 @@ char *log_format_log_line (
 		break;
 	case FORMAT_TIME:
 		prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-				"%s.%03ld %c/%-8s(%5d): ", timeBuf, entry->tv_nsec / 1000000,
-				priChar, entry->tag, (int)entry->pid);
+				"%s.%03ld%s %c/%-8s(%5d): ", timeBuf, entry->tv_nsec / 1000000,
+				tzBuf, priChar, entry->tag, (int)entry->pid);
 		strcpy(suffixBuf, "\n");
 		suffixLen = 1;
 		break;
 	case FORMAT_THREADTIME:
 		prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-				"%s.%03ld %5d %5d %c %-8s: ", timeBuf, entry->tv_nsec / 1000000,
-				(int)entry->pid, (int)entry->tid, priChar, entry->tag);
+				"%s.%03ld%s %5d %5d %c %-8s: ", timeBuf, entry->tv_nsec / 1000000,
+				tzBuf, (int)entry->pid, (int)entry->tid, priChar, entry->tag);
+		strcpy(suffixBuf, "\n");
+		suffixLen = 1;
+		break;
+	case FORMAT_DUMP:
+		prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
+				"%s.%03ld%s %5d %5d %c %-8s: ", timeBuf,
+				entry->tv_nsec / 1000000, tzBuf, (int)entry->pid,
+			   	(int)entry->tid, priChar, entry->tag);
 		strcpy(suffixBuf, "\n");
 		suffixLen = 1;
 		break;

@@ -1,4 +1,7 @@
-AM_CFLAGS = -I$(srcdir)/include $(DEBUG_CFLAGS) -Werror
+AM_CFLAGS = -I$(srcdir)/include \
+	$(DEBUG_CFLAGS) \
+	-Werror \
+	$(CAPI_BASE_COMMON_CFLAGS)
 
 dlog_includedir = $(includedir)/dlog
 dlog_include_HEADERS = \
@@ -14,7 +17,9 @@ libdlog_la_SOURCES =  \
 	src/libdlog/loglimiter.c \
 	include/loglimiter.h
 
-libdlog_la_LIBADD = -lpthread $(systemd_journal_LIBS)
+libdlog_la_LIBADD = -lpthread \
+	$(systemd_journal_LIBS) \
+	$(CAPI_BASE_COMMON_LIBS)
 
 bin_PROGRAMS = dlogutil dlog_logger
 

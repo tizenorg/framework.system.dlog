@@ -1,7 +1,9 @@
 CC ?= gcc
 
 TARGETS =  utc_ApplicationFW___dlog_print_func \
-	  utc_ApplicationFW___dlog_vprint_func
+	  utc_ApplicationFW___dlog_vprint_func \
+	  utc_ApplicationFW_dlog_print_func \
+	  utc_ApplicationFW_dlog_vprint_func
 
 PKGS = dlog
 

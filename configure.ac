@@ -81,6 +81,9 @@ AC_FUNC_MALLOC
 AC_FUNC_STAT
 AC_CHECK_FUNCS([memset])
 
+PKG_PROG_PKG_CONFIG
+PKG_CHECK_MODULES([CAPI_BASE_COMMON], [capi-base-common])
+
 # output files
 AC_CONFIG_FILES([Makefile dlog.pc])
 AC_OUTPUT

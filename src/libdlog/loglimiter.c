@@ -97,7 +97,7 @@ static int rule_compare(struct rule* r1, struct rule* r2)
 {
 	if (r1->hash == r2->hash) {
 		if (r1->prio == r2->prio) {
-			return strncmp(r1->tag, r2->tag, TAG_REASONABLE_LEN);
+			return strncmp(r1->tag, r2->tag, strlen(r2->tag));
 		} else {
 			return (r1->prio > r2->prio ? 1 : (-1));
 		}
@@ -110,7 +110,7 @@ static int rule_match(struct rule* r1, unsigned key, const char* s, int prio)
 {
 	if (r1->hash == key) {
 		if (r1->prio == prio) {
-			return strncmp(r1->tag, s, TAG_REASONABLE_LEN);
+			return strncmp(r1->tag, s, strlen(s));
 		} else {
 			return (r1->prio > prio ? 1 : (-1));
 		}
@@ -199,16 +199,16 @@ static struct hashmap* hashmap_create(int size, hash_cmp_func_t cmp_func,
 	internal_size |= internal_size >> 16;
 	internal_size++;
 
-	hm = malloc(sizeof(*hm) + internal_size * sizeof(void*));
+	hm = malloc(sizeof(struct hashmap) + internal_size * sizeof(void*));
 	if (!hm) {
 		return NULL;
 	}
+	/* Initialize hash field to correct value */
+	memset((void*)hm, 0, sizeof(struct hashmap) + internal_size * sizeof(void*));
 
 	hm->size = internal_size;
 	hm->cmp = cmp_func;
 	hm->match = match_func;
-	/* Initialize hash field to correct value */
-	memset((void*)hm + sizeof(*hm), 0, hm->size * sizeof(void*));
 
 	return hm;
 }
@@ -321,13 +321,13 @@ int __log_limiter_add_rule(const char* tag, int prio, int limit)
 		return (-1);
 	}
 
-	r = (struct rule*) malloc(sizeof(*r));
+	r = (struct rule*) malloc(sizeof(struct rule));
 	if (NULL == r) {
 		return (-1);
 	}
-	memset(r, 0, sizeof(*r));
+	memset(r, 0, sizeof(struct rule));
 
-	strncpy(r->tag, tag, TAG_REASONABLE_LEN);
+	snprintf(r->tag, TAG_REASONABLE_LEN, "%s", tag);
 	r->prio = util_prio_to_char(prio);
 	r->hash = util_hash_key(tag, r->prio);
 	r->limit = limit;
