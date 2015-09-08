@@ -1,11 +1,20 @@
-/* utils/logger.h
-** 
-** Copyright 2007, The Android Open Source Project
-**
-** This file is dual licensed.  It may be redistributed and/or modified
-** under the terms of the Apache 2.0 License OR version 2 of the GNU
-** General Public License.
-*/
+/*
+ * DLOG
+ * Copyright (c) 2005-2008, The Android Open Source Project
+ * Copyright (c) 2012-2013 Samsung Electronics Co., Ltd.
+ *
+ * Licensed under the Apache License, Version 2.0 (the License);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #ifndef _UTILS_LOGGER_H
 #define _UTILS_LOGGER_H
@@ -19,13 +28,13 @@ struct logger_entry {
     int32_t     tid;    /* generating process's tid */
     int32_t     sec;    /* seconds since Epoch */
     int32_t     nsec;   /* nanoseconds */
-    char        msg[0]; /* the entry's payload */
+    char        msg[]; /* the entry's payload */
 };
 
 #define LOGGER_LOG_MAIN		"log_main"
 #define LOGGER_LOG_RADIO	"log_radio"
 #define LOGGER_LOG_SYSTEM	"log_system"
-#define LOGGER_LOG_APPS		"log_apps"
+#define LOGGER_LOG_APPS	"log_apps"
 
 #define LOGGER_ENTRY_MAX_LEN		(4*1024)
 #define LOGGER_ENTRY_MAX_PAYLOAD	(LOGGER_ENTRY_MAX_LEN - sizeof(struct logger_entry))
