@@ -31,6 +31,7 @@
 #include <time.h>
 
 /* Included for priorities level */
+#include <dlog-internal.h>
 #include <dlog.h>
 #include "loglimiter.h"
 

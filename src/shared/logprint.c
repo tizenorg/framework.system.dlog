@@ -287,14 +287,18 @@ int log_add_filter_rule(log_format *p_format,
 			pri = DLOG_VERBOSE;
 		}
 
-		char *tagName;
+		char *tagName = NULL;
 		tagName = strndup(filterExpression, tagNameLength);
+		if (!tagName) {
+			goto error;
+		}
 
 		FilterInfo *p_fi = filterinfo_new(tagName, pri);
 		free(tagName);
 
-		if (!p_fi)
-			goto  error;
+		if (!p_fi) {
+			goto error;
+		}
 		p_fi->p_next = p_format->filters;
 		p_format->filters = p_fi;
 	}

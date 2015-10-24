@@ -1,3 +1,5 @@
+AUTOMAKE_OPTIONS = subdir-objects
+
 AM_CFLAGS = -I$(srcdir)/include \
 	$(DEBUG_CFLAGS) \
 	-Werror \
@@ -5,13 +7,15 @@ AM_CFLAGS = -I$(srcdir)/include \
 
 dlog_includedir = $(includedir)/dlog
 dlog_include_HEADERS = \
-	include/dlog.h
+	include/dlog.h \
+	include/dlog-internal.h
 
 lib_LTLIBRARIES = libdlog.la
 
 libdlog_la_SOURCES =  \
 	src/libdlog/log.c \
 	include/dlog.h \
+	include/dlog-internal.h \
 	src/libdlog/logconfig.c \
 	include/logconfig.h \
 	src/libdlog/loglimiter.c \

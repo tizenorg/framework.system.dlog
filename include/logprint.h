@@ -23,6 +23,7 @@
 #include <pthread.h>
 
 #include <logger.h>
+#include <dlog-internal.h>
 #include <dlog.h>
 
 #ifdef __cplusplus

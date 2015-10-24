@@ -10,7 +10,7 @@ Source102:  packaging/libdlog.manifest
 Source201:  packaging/dlog.conf.in
 Source202:  packaging/dlog_logger.conf.in
 Source203:  packaging/dlog_logger.conf-micro.in
-Source204:  packaging/dlog_logger.conf-micro-debug.in
+Source204:  packaging/dlog_logger.conf-debug.in
 Source301:  packaging/dlog_logger.service
 Source302:  packaging/dlog_logger.path
 BuildRequires: autoconf
@@ -60,16 +60,10 @@ Utilities for print log data
 cp %{SOURCE101} .
 cp %{SOURCE102} .
 %autogen --disable-static
-%configure --disable-static \
-%if 0%{?tizen_build_binary_release_type_daily}
+%configure  --disable-static \
 			--enable-fatal_on \
-%endif
-%if 0%{?tizen_build_binary_release_type_eng}
 			--enable-engineer_mode \
-%endif
-%if 0%{?sec_build_binary_debug_enable}
 			--enable-debug_enable \
-%endif
 			--without-systemd-journal
 make %{?jobs:-j%jobs}
 
@@ -134,6 +128,7 @@ systemctl daemon-reload
 
 %files -n libdlog-devel
 %{_includedir}/dlog/dlog.h
+%{_includedir}/dlog/dlog-internal.h
 %{_libdir}/pkgconfig/dlog.pc
 %{_libdir}/libdlog.so
 

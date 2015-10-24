@@ -27,7 +27,10 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
+
+#include <dlog-internal.h>
 #include <dlog.h>
+
 #include "loglimiter.h"
 #include "logconfig.h"
 #ifdef HAVE_SYSTEMD_JOURNAL
